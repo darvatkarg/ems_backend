@@ -1,21 +1,22 @@
-name: Deploy Backend to MilesWeb
+name: Deploy Backend to MilesWeb mPanel
 
 on:
   push:
     branches:
-      - main # Adjust if your default branch is master
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Deploy to Server via SSH
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd ~/public_html
             git pull origin main
