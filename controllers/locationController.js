@@ -7,7 +7,7 @@ exports.getAllLocations = async (req, res) => {
         s.id as state_id, s.state_name,
         l.id as lga_id, l.lga_name,
         w.id as ward_id, w.ward_name,
-        b.id as booth_id, b.booth_name, b.unique_booth_code
+        b.id as booth_id, b.booth_name, b.unique_booth_code, b.registered_voters
       FROM states s
       LEFT JOIN lgas l ON s.id = l.state_id
       LEFT JOIN wards w ON l.id = w.lga_id
@@ -24,13 +24,14 @@ exports.getAllLocations = async (req, res) => {
 exports.addLocationHierarchy = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { state_name, lga_name, ward_name, booth_name, unique_booth_code } = req.body;
+    const { state_name, lga_name, ward_name, booth_name, unique_booth_code, registered_voters } = req.body;
     
     const sName = state_name?.trim();
     const lName = lga_name?.trim();
     const wName = ward_name?.trim();
     const bName = booth_name?.trim();
     const bCode = unique_booth_code?.trim().toUpperCase();
+    const rVoters = parseInt(registered_voters) || 0;
 
     if (!sName || !lName || !wName || !bName || !bCode) {
       return res.status(400).json({ success: false, message: 'All location fields are required.' });
@@ -64,8 +65,8 @@ exports.addLocationHierarchy = async (req, res) => {
 
     // 4. Booth
     await client.query(
-      'INSERT INTO booths (ward_id, booth_name, unique_booth_code) VALUES ($1, $2, $3)',
-      [wardId, bName, bCode]
+      'INSERT INTO booths (ward_id, booth_name, unique_booth_code, registered_voters) VALUES ($1, $2, $3, $4)',
+      [wardId, bName, bCode, rVoters]
     );
 
     await client.query('COMMIT');
@@ -208,12 +209,13 @@ exports.updateBooth = async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { state_name, lga_name, ward_name, booth_name, unique_booth_code } = req.body;
+    const { state_name, lga_name, ward_name, booth_name, unique_booth_code, registered_voters } = req.body;
     const sName = state_name?.trim();
     const lName = lga_name?.trim();
     const wName = ward_name?.trim();
     const bName = booth_name?.trim();
     const bCode = unique_booth_code?.trim().toUpperCase();
+    const rVoters = parseInt(registered_voters) || 0;
 
     if (!bName || !bCode) {
       return res.status(400).json({ success: false, message: 'Booth name and code are required.' });
@@ -248,15 +250,15 @@ exports.updateBooth = async (req, res) => {
       }
     }
 
-    if (wardId) {
+  if (wardId) {
       await client.query(
-        'UPDATE booths SET booth_name = $1, unique_booth_code = $2, ward_id = $3 WHERE id = $4',
-        [bName, bCode, wardId, id]
+        'UPDATE booths SET booth_name = $1, unique_booth_code = $2, registered_voters = $3, ward_id = $4 WHERE id = $5',
+        [bName, bCode, rVoters, wardId, id]
       );
     } else {
       await client.query(
-        'UPDATE booths SET booth_name = $1, unique_booth_code = $2 WHERE id = $3',
-        [bName, bCode, id]
+        'UPDATE booths SET booth_name = $1, unique_booth_code = $2, registered_voters = $3 WHERE id = $4',
+        [bName, bCode, rVoters, id]
       );
     }
 
