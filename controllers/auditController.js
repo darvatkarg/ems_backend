@@ -63,6 +63,7 @@ exports.getSubmissions = async (req, res) => {
     const query = `
       SELECT 
         b.id AS booth_id,
+        b.registered_voters,
         sub.id, 
         sub.tally_sheet_url, 
         sub.video_url,
