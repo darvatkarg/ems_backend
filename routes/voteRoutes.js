@@ -10,6 +10,7 @@ router.get('/dashboard-summary', voteController.getElectionSummary);
 // NEW CODE:
 router.post('/submit-votes', upload.fields([
     { name: 'tally_sheet', maxCount: 1 },
+    { name: 'tally_sheet_2', maxCount: 1 },
     { name: 'tally_video', maxCount: 1 }
 ]), voteController.submitVotes);
 

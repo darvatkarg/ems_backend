@@ -323,6 +323,7 @@ exports.submitVotes = async (req, res) => {
 
         // FEATURE: Extracted files from fields upload and uploaded video & image to Supabase
         const tallySheetFile = req.files && req.files['tally_sheet'] ? req.files['tally_sheet'][0] : null;
+        const tallySheetFile2 = req.files && req.files['tally_sheet_2'] ? req.files['tally_sheet_2'][0] : null;
         const tallyVideoFile = req.files && req.files['tally_video'] ? req.files['tally_video'][0] : null;
 
         if (!operator_id || !booth_id || !votes) {
@@ -331,13 +332,14 @@ exports.submitVotes = async (req, res) => {
 
         const parsedVotes = typeof votes === 'string' ? JSON.parse(votes) : votes;
         let tallySheetUrl = null;
+        let tallySheetUrl2 = null;
         let videoUrl = null;
 
-        // Upload physical photo directly to Supabase Storage
+        // Upload physical photo 1 directly to Supabase Storage
         if (tallySheetFile) {
             try {
                 const fileExt = tallySheetFile.originalname ? tallySheetFile.originalname.split('.').pop() : 'jpg';
-                const fileName = `tally_${booth_id}_${Date.now()}.${fileExt}`;
+                const fileName = `tally_1_${booth_id}_${Date.now()}.${fileExt}`;
                 
                 const { error: uploadError } = await supabase.storage
                     .from('EMS_tally-sheets')
@@ -355,8 +357,35 @@ exports.submitVotes = async (req, res) => {
                     throw new Error(`Supabase storage upload error: ${uploadError.message}`);
                 }
             } catch (storageErr) {
-                console.error('Storage handler error:', storageErr.message);
-                throw new Error(`Failed to upload tally sheet photo: ${storageErr.message}`);
+                console.error('Storage handler error (photo 1):', storageErr.message);
+                throw new Error(`Failed to upload tally sheet photo 1: ${storageErr.message}`);
+            }
+        }
+
+        // Upload physical photo 2 directly to Supabase Storage
+        if (tallySheetFile2) {
+            try {
+                const fileExt = tallySheetFile2.originalname ? tallySheetFile2.originalname.split('.').pop() : 'jpg';
+                const fileName = `tally_2_${booth_id}_${Date.now()}.${fileExt}`;
+                
+                const { error: uploadError } = await supabase.storage
+                    .from('EMS_tally-sheets')
+                    .upload(fileName, tallySheetFile2.buffer, {
+                        contentType: tallySheetFile2.mimetype || 'image/jpeg',
+                        upsert: true
+                    });
+
+                if (!uploadError) {
+                    const { data: urlData } = supabase.storage
+                        .from('EMS_tally-sheets')
+                        .getPublicUrl(fileName);
+                    tallySheetUrl2 = urlData.publicUrl;
+                } else {
+                    throw new Error(`Supabase storage upload error: ${uploadError.message}`);
+                }
+            } catch (storageErr) {
+                console.error('Storage handler error (photo 2):', storageErr.message);
+                throw new Error(`Failed to upload tally sheet photo 2: ${storageErr.message}`);
             }
         }
 
@@ -390,8 +419,8 @@ exports.submitVotes = async (req, res) => {
         await client.query('BEGIN');
 
         const recordResult = await client.query(
-            `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, video_url) VALUES ($1, $2, $3, $4) RETURNING id`,
-            [booth_id, operator_id, tallySheetUrl, videoUrl]
+            `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, tally_sheet_url_2, video_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [booth_id, operator_id, tallySheetUrl, tallySheetUrl2, videoUrl]
         );
         const voteRecordId = recordResult.rows[0].id;
 

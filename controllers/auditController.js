@@ -66,6 +66,7 @@ exports.getSubmissions = async (req, res) => {
         b.registered_voters,
         sub.id, 
         sub.tally_sheet_url, 
+        sub.tally_sheet_url_2, 
         sub.video_url,
         sub.created_at,
         b.unique_booth_code, 
