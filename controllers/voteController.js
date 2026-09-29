@@ -418,24 +418,10 @@ exports.submitVotes = async (req, res) => {
 
         await client.query('BEGIN');
 
-        let recordResult;
-        try {
-            recordResult = await client.query(
-                `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, tally_sheet_url_2, video_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                [booth_id, operator_id, tallySheetUrl, tallySheetUrl2, videoUrl]
-            );
-        } catch (insertErr) {
-            if (insertErr.message && insertErr.message.includes('tally_sheet_url_2')) {
-                console.warn('tally_sheet_url_2 column was missing; adding it now dynamically...');
-                await client.query('ALTER TABLE vote_records ADD COLUMN IF NOT EXISTS tally_sheet_url_2 TEXT;');
-                recordResult = await client.query(
-                    `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, tally_sheet_url_2, video_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                    [booth_id, operator_id, tallySheetUrl, tallySheetUrl2, videoUrl]
-                );
-            } else {
-                throw insertErr;
-            }
-        }
+        const recordResult = await client.query(
+            `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, tally_sheet_url_2, video_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [booth_id, operator_id, tallySheetUrl, tallySheetUrl2, videoUrl]
+        );
         const voteRecordId = recordResult.rows[0].id;
 
         for (const [candidateId, count] of Object.entries(parsedVotes)) {

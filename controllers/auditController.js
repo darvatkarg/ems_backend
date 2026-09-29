@@ -1,22 +1,8 @@
 const { pool } = require("../config/db");
 
-// Auto-ensure tally_sheet_url_2 column exists to prevent SQL crash
-let columnEnsured = false;
-async function ensureTallySheet2Column() {
-  if (columnEnsured) return;
-  try {
-    await pool.query('ALTER TABLE vote_records ADD COLUMN IF NOT EXISTS tally_sheet_url_2 TEXT;');
-    columnEnsured = true;
-  } catch (e) {
-    // Non-fatal if permission restricted
-  }
-}
-
 // FIX: Optimized audit query using correlated subquery and backend filters for paginated list
 exports.getSubmissions = async (req, res) => {
   try {
-    await ensureTallySheet2Column();
-
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const offset = (page - 1) * limit;

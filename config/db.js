@@ -16,17 +16,13 @@ pool.on('error', (err) => {
   console.error('❌ Unexpected error on idle PostgreSQL client:', err.message);
 });
 
-// Startup connection probe & auto-migration
+// Startup connection probe
 pool.query('SELECT NOW()')
   .then((res) => {
     console.log('✅ PostgreSQL connected successfully at:', res.rows[0].now);
-    return pool.query('ALTER TABLE vote_records ADD COLUMN IF NOT EXISTS tally_sheet_url_2 TEXT;');
-  })
-  .then(() => {
-    console.log('✅ Column vote_records.tally_sheet_url_2 verified/migrated.');
   })
   .catch((err) => {
-    console.error('❌ PostgreSQL startup connection/migration error:', err.message);
+    console.error('❌ PostgreSQL initial connection failed:', err.message);
   });
 
 
