@@ -1,53 +1,65 @@
 const { pool } = require("../config/db");
 
+// Auto-ensure tally_sheet_url_2 column exists to prevent SQL crash
+let columnEnsured = false;
+async function ensureTallySheet2Column() {
+  if (columnEnsured) return;
+  try {
+    await pool.query('ALTER TABLE vote_records ADD COLUMN IF NOT EXISTS tally_sheet_url_2 TEXT;');
+    columnEnsured = true;
+  } catch (e) {
+    // Non-fatal if permission restricted
+  }
+}
+
 // FIX: Optimized audit query using correlated subquery and backend filters for paginated list
 exports.getSubmissions = async (req, res) => {
   try {
+    await ensureTallySheet2Column();
+
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const offset = (page - 1) * limit;
     const { state, lga, ward, search, sort = 'asc' } = req.query;
-    const sortDirection = sort.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
 
     const whereClauses = [];
     const queryParams = [];
 
-    if (state) {
-      queryParams.push(state);
-      whereClauses.push(`s.state_name = $${queryParams.length}`);
+    if (state && state !== 'undefined' && state !== 'null') {
+      queryParams.push(state.trim());
+      whereClauses.push(`TRIM(s.state_name) ILIKE $${queryParams.length}`);
     }
-    if (lga) {
-      queryParams.push(lga);
-      whereClauses.push(`l.lga_name = $${queryParams.length}`);
+    if (lga && lga !== 'undefined' && lga !== 'null') {
+      queryParams.push(lga.trim());
+      whereClauses.push(`TRIM(l.lga_name) ILIKE $${queryParams.length}`);
     }
-    if (ward) {
-      queryParams.push(ward);
-      whereClauses.push(`w.ward_name = $${queryParams.length}`);
+    if (ward && ward !== 'undefined' && ward !== 'null') {
+      queryParams.push(ward.trim());
+      whereClauses.push(`(TRIM(w.ward_name) ILIKE $${queryParams.length} OR w.id::text = $${queryParams.length})`);
     }
-    if (search) {
-      queryParams.push(`%${search}%`);
-      whereClauses.push(`(o.full_name ILIKE $${queryParams.length} OR b.unique_booth_code ILIKE $${queryParams.length} OR b.booth_name ILIKE $${queryParams.length})`);
+    if (search && search !== 'undefined' && search !== 'null') {
+      queryParams.push(`%${search.trim()}%`);
+      whereClauses.push(`(COALESCE(o.full_name, o_sub.full_name, '') ILIKE $${queryParams.length} OR b.unique_booth_code ILIKE $${queryParams.length} OR b.booth_name ILIKE $${queryParams.length})`);
     }
 
-
-    // FIX: Update whereSql to start with WHERE instead of AND since the latest-only filter is removed
     const whereSql = whereClauses.length > 0 ? ' WHERE ' + whereClauses.join(' AND ') : '';
 
     // Count total booths matching filters
     const countQuery = `
-      SELECT COUNT(*)
+      SELECT COUNT(DISTINCT b.id)
       FROM booths b
       JOIN wards w ON b.ward_id = w.id
-      JOIN lgas l ON w.lga_id = l.id
-      JOIN states s ON l.state_id = s.id
+      LEFT JOIN lgas l ON w.lga_id = l.id
+      LEFT JOIN states s ON l.state_id = s.id
+      LEFT JOIN operators o ON o.assigned_booth_id = b.id
       LEFT JOIN LATERAL (
-        SELECT *
+        SELECT vr.id, vr.operator_id
         FROM vote_records vr
         WHERE vr.booth_id = b.id
         ORDER BY vr.created_at DESC
         LIMIT 1
       ) sub ON true
-      LEFT JOIN operators o ON sub.operator_id = o.id
+      LEFT JOIN operators o_sub ON sub.operator_id = o_sub.id
       ${whereSql};
     `;
 
@@ -75,7 +87,7 @@ exports.getSubmissions = async (req, res) => {
         w.ward_name,
         l.lga_name,
         s.state_name,
-        o.full_name as operator_name,
+        COALESCE(o.full_name, o_sub.full_name) as operator_name,
         latest_audit.updated_by_name,
         latest_audit.updated_by_role,
         latest_audit.updated_at,
@@ -97,8 +109,9 @@ exports.getSubmissions = async (req, res) => {
         ) as votes_breakdown
       FROM booths b
       JOIN wards w ON b.ward_id = w.id
-      JOIN lgas l ON w.lga_id = l.id
-      JOIN states s ON l.state_id = s.id
+      LEFT JOIN lgas l ON w.lga_id = l.id
+      LEFT JOIN states s ON l.state_id = s.id
+      LEFT JOIN operators o ON o.assigned_booth_id = b.id
       LEFT JOIN LATERAL (
         SELECT *
         FROM vote_records vr
@@ -106,7 +119,7 @@ exports.getSubmissions = async (req, res) => {
         ORDER BY vr.created_at DESC
         LIMIT 1
       ) sub ON true
-      LEFT JOIN operators o ON sub.operator_id = o.id
+      LEFT JOIN operators o_sub ON sub.operator_id = o_sub.id
       LEFT JOIN LATERAL (
         SELECT 
           vd.updated_at,
@@ -139,7 +152,7 @@ exports.getSubmissions = async (req, res) => {
     console.error("Audit fetch error:", err);
     res
       .status(500)
-      .json({ success: false, message: "Failed to fetch audit records" });
+      .json({ success: false, message: "Failed to fetch audit records: " + err.message });
   }
 };
 

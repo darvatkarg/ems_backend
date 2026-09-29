@@ -70,6 +70,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Global error handling middleware for Multer and API runtime errors
+app.use((err, req, res, next) => {
+  console.error(`❌ Global Server Error [${req.method} ${req.url}]:`, err.stack || err);
+  const status = err.status || (err.name === 'MulterError' ? 400 : 500);
+  res.status(status).json({
+    success: false,
+    message: err.message || 'Internal Server Error'
+  });
+});
+
 app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Production Server running on port ${port}`);
 });
