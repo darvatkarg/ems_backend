@@ -1,4 +1,6 @@
-const { pool, supabase } = require('../config/db');
+const fs = require('fs');
+const path = require('path');
+const { pool } = require('../config/db');
 
 // --- 1. DASHBOARD ENGINE (INDIAN ELECTION STYLE) ---
 // OLD CODE:
@@ -321,12 +323,13 @@ exports.submitVotes = async (req, res) => {
         //     [booth_id, operator_id, tallySheetUrl]
         // );
 
-        // FEATURE: Extracted files from fields upload and uploaded video & image to Supabase
+        // FEATURE: Extracted files from fields upload and save to dedicated server local disk
         const tallySheetFile = req.files && req.files['tally_sheet'] ? req.files['tally_sheet'][0] : null;
         const tallySheetFile2 = req.files && req.files['tally_sheet_2'] ? req.files['tally_sheet_2'][0] : null;
         const tallyVideoFile = req.files && req.files['tally_video'] ? req.files['tally_video'][0] : null;
 
         if (!operator_id || !booth_id || !votes) {
+            client.release();
             return res.status(400).json({ success: false, message: 'Missing required vote fields' });
         }
 
@@ -335,84 +338,56 @@ exports.submitVotes = async (req, res) => {
         let tallySheetUrl2 = null;
         let videoUrl = null;
 
-        // Upload physical photo 1 directly to Supabase Storage
+        // Ensure dedicated server uploads directory exists
+        const uploadsDir = path.join(__dirname, '..', 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        const baseUrl = (process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, '');
+
+        // 1. Save Photo 1 to Local Disk
         if (tallySheetFile) {
             try {
                 const fileExt = tallySheetFile.originalname ? tallySheetFile.originalname.split('.').pop() : 'jpg';
                 const fileName = `tally_1_${booth_id}_${Date.now()}.${fileExt}`;
+                const filePath = path.join(uploadsDir, fileName);
                 
-                const { error: uploadError } = await supabase.storage
-                    .from('EMS_tally-sheets')
-                    .upload(fileName, tallySheetFile.buffer, {
-                        contentType: tallySheetFile.mimetype || 'image/jpeg',
-                        upsert: true
-                    });
-
-                if (!uploadError) {
-                    const { data: urlData } = supabase.storage
-                        .from('EMS_tally-sheets')
-                        .getPublicUrl(fileName);
-                    tallySheetUrl = urlData.publicUrl;
-                } else {
-                    throw new Error(`Supabase storage upload error: ${uploadError.message}`);
-                }
-            } catch (storageErr) {
-                console.error('Storage handler error (photo 1):', storageErr.message);
-                throw new Error(`Failed to upload tally sheet photo 1: ${storageErr.message}`);
+                fs.writeFileSync(filePath, tallySheetFile.buffer);
+                tallySheetUrl = `${baseUrl}/uploads/${fileName}`;
+            } catch (fileErr) {
+                console.error('Local storage write error (Photo 1):', fileErr.message);
+                throw new Error(`Failed to save tally sheet photo 1 to disk: ${fileErr.message}`);
             }
         }
 
-        // Upload physical photo 2 directly to Supabase Storage
+        // 2. Save Photo 2 to Local Disk
         if (tallySheetFile2) {
             try {
                 const fileExt = tallySheetFile2.originalname ? tallySheetFile2.originalname.split('.').pop() : 'jpg';
                 const fileName = `tally_2_${booth_id}_${Date.now()}.${fileExt}`;
+                const filePath = path.join(uploadsDir, fileName);
                 
-                const { error: uploadError } = await supabase.storage
-                    .from('EMS_tally-sheets')
-                    .upload(fileName, tallySheetFile2.buffer, {
-                        contentType: tallySheetFile2.mimetype || 'image/jpeg',
-                        upsert: true
-                    });
-
-                if (!uploadError) {
-                    const { data: urlData } = supabase.storage
-                        .from('EMS_tally-sheets')
-                        .getPublicUrl(fileName);
-                    tallySheetUrl2 = urlData.publicUrl;
-                } else {
-                    throw new Error(`Supabase storage upload error: ${uploadError.message}`);
-                }
-            } catch (storageErr) {
-                console.error('Storage handler error (photo 2):', storageErr.message);
-                throw new Error(`Failed to upload tally sheet photo 2: ${storageErr.message}`);
+                fs.writeFileSync(filePath, tallySheetFile2.buffer);
+                tallySheetUrl2 = `${baseUrl}/uploads/${fileName}`;
+            } catch (fileErr) {
+                console.error('Local storage write error (Photo 2):', fileErr.message);
+                throw new Error(`Failed to save tally sheet photo 2 to disk: ${fileErr.message}`);
             }
         }
 
-        // Upload physical video directly to Supabase Storage
+        // 3. Save Video to Local Disk
         if (tallyVideoFile) {
             try {
                 const fileExt = tallyVideoFile.originalname ? tallyVideoFile.originalname.split('.').pop() : 'mp4';
                 const fileName = `tally_video_${booth_id}_${Date.now()}.${fileExt}`;
+                const filePath = path.join(uploadsDir, fileName);
                 
-                const { error: uploadError } = await supabase.storage
-                    .from('EMS_tally-videos')
-                    .upload(fileName, tallyVideoFile.buffer, {
-                        contentType: tallyVideoFile.mimetype || 'video/mp4',
-                        upsert: true
-                    });
-
-                if (!uploadError) {
-                    const { data: urlData } = supabase.storage
-                        .from('EMS_tally-videos')
-                        .getPublicUrl(fileName);
-                    videoUrl = urlData.publicUrl;
-                } else {
-                    throw new Error(`Supabase storage video upload error: ${uploadError.message}`);
-                }
-            } catch (storageErr) {
-                console.error('Video storage handler error:', storageErr.message);
-                throw new Error(`Failed to upload tally video: ${storageErr.message}`);
+                fs.writeFileSync(filePath, tallyVideoFile.buffer);
+                videoUrl = `${baseUrl}/uploads/${fileName}`;
+            } catch (fileErr) {
+                console.error('Local video write error:', fileErr.message);
+                throw new Error(`Failed to save tally video to disk: ${fileErr.message}`);
             }
         }
 
