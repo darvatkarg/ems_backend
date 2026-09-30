@@ -283,11 +283,14 @@ exports.submitVotes = async (req, res) => {
             }
         }
 
+        // Combine both tally sheet photo URLs into a JSON array string for the single tally_sheet_url column
+        const combinedTallyUrls = JSON.stringify([tallySheetUrl, tallySheetUrl2].filter(Boolean));
+
         await client.query('BEGIN');
 
         const recordResult = await client.query(
-            `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, tally_sheet_url_2, video_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [booth_id, operator_id, tallySheetUrl, tallySheetUrl2, videoUrl]
+            `INSERT INTO vote_records (booth_id, operator_id, tally_sheet_url, video_url) VALUES ($1, $2, $3, $4) RETURNING id`,
+            [booth_id, operator_id, combinedTallyUrls, videoUrl]
         );
         const voteRecordId = recordResult.rows[0].id;
 

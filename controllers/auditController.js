@@ -56,7 +56,6 @@ exports.getSubmissions = async (req, res) => {
         COALESCE(b.registered_voters, 0) AS registered_voters,
         sub.id, 
         sub.tally_sheet_url, 
-        sub.tally_sheet_url_2, 
         sub.video_url,
         sub.created_at,
         b.unique_booth_code, 
@@ -94,7 +93,6 @@ exports.getSubmissions = async (req, res) => {
         SELECT 
           vr.id,
           vr.tally_sheet_url,
-          vr.tally_sheet_url_2,
           vr.video_url,
           vr.created_at
         FROM vote_records vr
