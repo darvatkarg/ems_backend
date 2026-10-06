@@ -20,27 +20,35 @@ const getFileBuffer = (file) => {
 // --- 1. DASHBOARD ENGINE (INDIAN ELECTION STYLE) ---
 exports.getElectionSummary = async (req, res) => {
   try {
-    // 1. Fetch Ward Summary data directly from latest booth submissions
+    // Ensure ward_candidate_votes table exists so query doesn't fail on fresh DB
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ward_candidate_votes (
+        id SERIAL PRIMARY KEY,
+        ward_id INTEGER NOT NULL REFERENCES wards(id) ON DELETE CASCADE,
+        candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+        total_votes INTEGER NOT NULL DEFAULT 0,
+        is_winner BOOLEAN DEFAULT FALSE,
+        updated_by_user_id INTEGER REFERENCES users(id),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE (ward_id, candidate_id)
+      );
+    `);
+
+    // 1. Fetch Ward Summary data directly from verified ward_candidate_votes reports
     const wardVotesQuery = `
-      WITH latest_booth_records AS (
-        SELECT DISTINCT ON (booth_id) id, booth_id
-        FROM vote_records
-        ORDER BY booth_id, created_at DESC
-      )
       SELECT 
         w.id as ward_id, w.ward_name, l.lga_name, s.state_name,
         c.id as candidate_id, c.candidate_name,
         p.id as party_id, p.party_name, p.party_code, p.party_icon_url,
-        COALESCE(SUM(COALESCE(vd.moderator_vote_count, vd.vote_count, 0)), 0)::INT as total_votes
+        COALESCE(wcv.total_votes, 0)::INT as total_votes,
+        COALESCE(wcv.is_winner, false) as is_winner
       FROM wards w
       JOIN lgas l ON w.lga_id = l.id
       JOIN states s ON l.state_id = s.id
       JOIN candidates c ON c.ward_id = w.id
       JOIN political_parties p ON c.party_id = p.id
-      LEFT JOIN booths b ON b.ward_id = w.id
-      LEFT JOIN latest_booth_records lbr ON lbr.booth_id = b.id
-      LEFT JOIN vote_details vd ON vd.vote_record_id = lbr.id AND vd.candidate_id = c.id
-      GROUP BY w.id, w.ward_name, l.lga_name, s.state_name, c.id, c.candidate_name, p.id, p.party_name, p.party_code, p.party_icon_url
+      LEFT JOIN ward_candidate_votes wcv ON wcv.ward_id = w.id AND wcv.candidate_id = c.id
       ORDER BY w.id, total_votes DESC;
     `;
     const wardVotesRes = await pool.query(wardVotesQuery);
@@ -90,7 +98,7 @@ exports.getElectionSummary = async (req, res) => {
     const totalBoothsCount = parseInt(totalBoothsRes.rows[0].count, 10) || 0;
     const totalCandidatesCount = parseInt(totalCandidatesRes.rows[0].count, 10) || 0;
 
-    // Build wardsMap from latest booth returns
+    // Build wardsMap from verified ward reports
     const wardsMap = {};
     wardVotesRes.rows.forEach(row => {
       if (!wardsMap[row.ward_id]) {
@@ -109,7 +117,8 @@ exports.getElectionSummary = async (req, res) => {
         party_name: row.party_name,
         party_code: row.party_code,
         party_icon_url: row.party_icon_url,
-        total_votes: parseInt(row.total_votes, 10)
+        total_votes: parseInt(row.total_votes, 10) || 0,
+        is_winner: Boolean(row.is_winner)
       });
     });
 
@@ -135,7 +144,7 @@ exports.getElectionSummary = async (req, res) => {
         party_name: row.party_name,
         party_code: row.party_code,
         party_icon_url: row.party_icon_url,
-        total_votes: parseInt(row.total_votes, 10)
+        total_votes: parseInt(row.total_votes, 10) || 0
       });
     });
 
@@ -159,26 +168,33 @@ exports.getElectionSummary = async (req, res) => {
     Object.values(wardsMap).forEach(ward => {
       ward.candidates.sort((a, b) => b.total_votes - a.total_votes);
       ward.candidates.forEach(c => {
-        if (partyStats[c.party_id]) {
-          partyStats[c.party_id].total_popular_votes += c.total_votes;
+        if (c.total_votes > 0) {
+          if (partyStats[c.party_id]) {
+            partyStats[c.party_id].total_popular_votes += c.total_votes;
+          }
+          totalOverallVotes += c.total_votes;
         }
-        totalOverallVotes += c.total_votes;
       });
 
-      // Leading candidate with > 0 votes wins the ward (Indian First-Past-The-Post style)
-      const leadingCandidate = ward.candidates[0];
-      if (leadingCandidate && leadingCandidate.total_votes > 0) {
-        if (partyStats[leadingCandidate.party_id]) {
-          partyStats[leadingCandidate.party_id].seats_won += 1;
-          partyStats[leadingCandidate.party_id].won_wards.push({
-            ward_name: ward.ward_name,
-            lga_name: ward.lga_name,
-            state_name: ward.state_name,
-            candidate_name: leadingCandidate.candidate_name,
-            margin_votes: leadingCandidate.total_votes - (ward.candidates[1]?.total_votes || 0),
-            candidate_votes: leadingCandidate.total_votes
-          });
-        }
+      // Determine winning candidate for seat allocation
+      const explicitWinner = ward.candidates.find(c => c.is_winner && c.total_votes > 0);
+      const topCandidate = ward.candidates[0];
+
+      const winningCand = explicitWinner || (topCandidate && topCandidate.total_votes > 0 ? topCandidate : null);
+
+      if (winningCand && partyStats[winningCand.party_id]) {
+        partyStats[winningCand.party_id].seats_won += 1;
+        const runnerUp = ward.candidates.find(c => c.candidate_id !== winningCand.candidate_id);
+        const runnerUpVotes = runnerUp ? runnerUp.total_votes : 0;
+
+        partyStats[winningCand.party_id].won_wards.push({
+          ward_name: ward.ward_name,
+          lga_name: ward.lga_name,
+          state_name: ward.state_name,
+          candidate_name: winningCand.candidate_name,
+          margin_votes: winningCand.total_votes - runnerUpVotes,
+          candidate_votes: winningCand.total_votes
+        });
       }
     });
 
