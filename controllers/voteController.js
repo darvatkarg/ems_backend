@@ -227,12 +227,18 @@ exports.submitVotes = async (req, res) => {
         const tallySheetFile2 = req.files && req.files['tally_sheet_2'] ? req.files['tally_sheet_2'][0] : null;
         const tallyVideoFile = req.files && req.files['tally_video'] ? req.files['tally_video'][0] : null;
 
-        if (!operator_id || !booth_id || !votes) {
+        if (!operator_id || !booth_id) {
             client.release();
-            return res.status(400).json({ success: false, message: 'Missing required vote fields' });
+            return res.status(400).json({ success: false, message: 'Missing required operator or booth ID' });
         }
 
-        const parsedVotes = typeof votes === 'string' ? JSON.parse(votes) : votes;
+        // 2 photos are strictly mandatory; Video is optional
+        if (!tallySheetFile || !tallySheetFile2) {
+            client.release();
+            return res.status(400).json({ success: false, message: 'Both Photo 1 and Photo 2 are required.' });
+        }
+
+        const parsedVotes = typeof votes === 'string' ? JSON.parse(votes) : (votes || {});
         let tallySheetUrl = null;
         let tallySheetUrl2 = null;
         let videoUrl = null;
@@ -281,7 +287,7 @@ exports.submitVotes = async (req, res) => {
             }
         }
 
-        // 3. Save Video to Local Disk
+        // 3. Save Video to Local Disk (Optional)
         if (tallyVideoFile) {
             try {
                 const videoBuf = getFileBuffer(tallyVideoFile);

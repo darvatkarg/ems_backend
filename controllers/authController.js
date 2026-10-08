@@ -4,7 +4,9 @@ const jwt = require('jsonwebtoken');
 const { compressProfileImage } = require('../utils/imageCompressor');
 
 exports.adminLogin = async (req, res) => {
-    const { email, username, password } = req.body;
+    const email = req.body?.email?.trim();
+    const username = req.body?.username?.trim();
+    const password = req.body?.password?.trim();
     const identifier = email || username;
     try {
         const result = await pool.query(
@@ -56,7 +58,8 @@ exports.adminLogin = async (req, res) => {
 };
 
 exports.operatorLogin = async (req, res) => {
-    const { username, password } = req.body;
+    const username = req.body?.username?.trim();
+    const password = req.body?.password?.trim();
     try {
         // JOIN with booths to get the assigned booth details on login
         const result = await pool.query(
