@@ -3,7 +3,13 @@ const router = express.Router();
 const multer = require('multer');
 const voteController = require('../controllers/voteController');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 512 * 1024 * 1024,  // 512MB limit per file
+    fieldSize: 512 * 1024 * 1024, // 512MB limit per field
+  }
+});
 
 router.get('/dashboard-summary', voteController.getElectionSummary);
 // router.post('/submit-votes', upload.single('tally_sheet'), voteController.submitVotes);

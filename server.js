@@ -40,7 +40,13 @@ app.use(cors({
 // Handle preflight requests cleanly
 // app.options('*', cors());
 
-app.use(express.json());
+// NOTE FOR MILESWEB HOSTING:
+// For Nginx or Apache / cPanel reverse proxies on MilesWeb, manually update your server config:
+// - Apache / cPanel (.htaccess): LimitRequestBody 536870912  and  TimeOut 600
+// - Nginx: client_max_body_size 512M;  proxy_read_timeout 600s;  proxy_connect_timeout 600s;  proxy_send_timeout 600s;
+
+app.use(express.json({ limit: '512mb' }));
+app.use(express.urlencoded({ extended: true, limit: '512mb' }));
 
 // Serve static files from local uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -80,6 +86,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Production Server running on port ${port}`);
 });
+server.timeout = 600000;          // 10 minutes (600,000 ms)
+server.keepAliveTimeout = 600000; // 10 minutes (600,000 ms)
