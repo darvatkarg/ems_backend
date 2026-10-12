@@ -4,8 +4,10 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure local uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads');
+// Ensure shared uploads directory exists
+const uploadsDir = process.env.UPLOADS_DIR
+  ? (path.isAbsolute(process.env.UPLOADS_DIR) ? process.env.UPLOADS_DIR : path.resolve(__dirname, process.env.UPLOADS_DIR))
+  : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -48,8 +50,14 @@ app.use(cors({
 app.use(express.json({ limit: '512mb' }));
 app.use(express.urlencoded({ extended: true, limit: '512mb' }));
 
-// Serve static files from local uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files from local uploads directory with aggressive caching headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '30d',
+  immutable: true,
+  setHeaders: (res, path) => {
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+  }
+}));
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
