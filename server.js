@@ -50,14 +50,23 @@ app.use(cors({
 app.use(express.json({ limit: '512mb' }));
 app.use(express.urlencoded({ extended: true, limit: '512mb' }));
 
-// Serve static files from local uploads directory with aggressive caching headers
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+// Serve static files with aggressive caching headers
+const staticOptions = {
   maxAge: '30d',
   immutable: true,
   setHeaders: (res, path) => {
     res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
   }
-}));
+};
+
+// 1. Primary uploads directory
+app.use('/uploads', express.static(uploadsDir, staticOptions));
+
+// 2. Fallback to voting-mobile-api uploads directory if sibling exists
+const mobileUploadsDir = path.resolve(__dirname, '..', 'voting-mobile-api', 'uploads');
+if (fs.existsSync(mobileUploadsDir) && mobileUploadsDir !== uploadsDir) {
+  app.use('/uploads', express.static(mobileUploadsDir, staticOptions));
+}
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -77,10 +86,10 @@ app.use('/api/ward-reports', require('./routes/wardReportRoutes'));
 
 // Keep-Alive / Health Check Route for UptimeRobot
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    message: 'Server is awake', 
-    timestamp: new Date().toISOString() 
+  res.status(200).json({
+    status: 'ok',
+    message: 'Server is awake',
+    timestamp: new Date().toISOString()
   });
 });
 
