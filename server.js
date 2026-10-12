@@ -50,12 +50,14 @@ app.use(cors({
 app.use(express.json({ limit: '512mb' }));
 app.use(express.urlencoded({ extended: true, limit: '512mb' }));
 
-// Serve static files with aggressive caching headers
+// Serve static files with aggressive caching headers and permissive CORS
 const staticOptions = {
   maxAge: '30d',
   immutable: true,
   setHeaders: (res, path) => {
     res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   }
 };
 
@@ -63,9 +65,16 @@ const staticOptions = {
 app.use('/uploads', express.static(uploadsDir, staticOptions));
 
 // 2. Fallback to voting-mobile-api uploads directory if sibling exists
-const mobileUploadsDir = path.resolve(__dirname, '..', 'voting-mobile-api', 'uploads');
-if (fs.existsSync(mobileUploadsDir) && mobileUploadsDir !== uploadsDir) {
-  app.use('/uploads', express.static(mobileUploadsDir, staticOptions));
+const candidateMobileDirs = [
+  process.env.MOBILE_UPLOADS_DIR,
+  path.resolve(__dirname, '..', 'voting-mobile-api', 'uploads'),
+  path.resolve(__dirname, 'uploads')
+].filter(Boolean);
+
+for (const mDir of candidateMobileDirs) {
+  if (fs.existsSync(mDir) && mDir !== uploadsDir) {
+    app.use('/uploads', express.static(mDir, staticOptions));
+  }
 }
 
 // Routes
